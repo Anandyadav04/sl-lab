@@ -1,0 +1,112 @@
+Launch Two Ubuntu EC2 Instances
+
+Use Ubuntu 20.04 or 22.04 LTS.
+
+Choose t2.micro or above.
+
+Same VPC, same subnet.
+
+Inbound rules: Allow ICMP (ping) and UDP 500, 4500 ports for IPSec.
+
+Example Security Group inbound rules:
+
+Type        Protocol  Port Range  Source
+----------- --------- ----------- -------------
+SSH         TCP       22          your_ip/32
+All ICMP    ICMP      ALL         10.0.0.0/16
+Custom UDP  UDP       500,4500    10.0.0.0/16
+
+# ==== IPSec Setup Script for RED Server ====
+
+# Update and install StrongSwan
+sudo apt update -y
+sudo apt install strongswan strongswan-starter -y
+
+# Backup old configs
+sudo mv /etc/ipsec.conf /etc/ipsec.conf.bak 2>/dev/null
+sudo mv /etc/ipsec.secrets /etc/ipsec.secrets.bak 2>/dev/null
+
+# Write new ipsec.conf
+sudo tee /etc/ipsec.conf > /dev/null <<EOF
+config setup
+    charondebug="ike 2, cfg 2, knl 2, esp 2"
+
+conn blue
+    left=<RED_PRIVATE_IP>
+    leftsubnet=<RED_PRIVATE_IP>/32
+    leftid=@red
+    right=<blue_privateip>
+    rightsubnet=<blue_privateip>/32
+    rightid=@blue
+    authby=psk
+    auto=add
+    ike=aes256-sha1-modp1024
+    esp=aes256-sha1
+EOF
+
+# Write ipsec.secrets
+sudo tee /etc/ipsec.secrets > /dev/null <<EOF
+@red @blue : PSK "12345"
+EOF
+
+# Restart service
+sudo systemctl restart strongswan-starter
+
+# Bring up connection
+sudo ipsec up blue
+
+# Verify
+sudo ipsec statusall
+🚀 2️⃣ On BLUE Instance (172.31.10.24)
+👉 Replace <RED_PRIVATE_IP> with RED’s same IP.
+
+bash
+Copy code
+#!/bin/bash
+# ==== IPSec Setup Script for BLUE Server ====
+
+# Update and install StrongSwan
+sudo apt update -y
+sudo apt install strongswan strongswan-starter -y
+
+# Backup old configs
+sudo mv /etc/ipsec.conf /etc/ipsec.conf.bak 2>/dev/null
+sudo mv /etc/ipsec.secrets /etc/ipsec.secrets.bak 2>/dev/null
+
+# Write new ipsec.conf
+sudo tee /etc/ipsec.conf > /dev/null <<EOF
+config setup
+    charondebug="ike 2, cfg 2, knl 2, esp 2"
+
+conn red
+    left=<blue_privateip>
+    leftsubnet=<blue_privateip>/32
+    leftid=@blue
+    right=<RED_PRIVATE_IP>
+    rightsubnet=<RED_PRIVATE_IP>/32
+    rightid=@red
+    authby=psk
+    auto=add
+    ike=aes256-sha1-modp1024
+    esp=aes256-sha1
+EOF
+
+# Write ipsec.secrets
+sudo tee /etc/ipsec.secrets > /dev/null <<EOF
+@red @blue : PSK "12345"
+EOF
+
+# Restart service
+sudo systemctl restart strongswan-starter
+
+# Bring up connection
+sudo ipsec up red
+
+# Verify
+sudo ipsec statusall
+🧪  Test the Connection
+On BLUE (172.31.10.24) run:
+
+bash
+Copy code
+ping <RED_PRIVATE_IP>
