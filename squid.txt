@@ -1,0 +1,276 @@
+
+```bash
+sudo apt update
+sudo apt -y install squid apache2-utils net-tools
+```
+
+---
+
+### 🧩 **Backup existing config**
+
+```bash
+cd /etc/squid
+sudo cp squid.conf squid.conf.copy
+```
+
+---
+
+### ✏️ **Edit config file**
+
+```bash
+sudo nano /etc/squid/squid.conf
+```
+
+⚠️ **Delete everything** and paste exactly this:
+
+```
+# ===============================
+# Minimal Authenticated Proxy Lab
+# ===============================
+
+# Listen on default port
+http_port 3128
+
+# Use basic auth with htpasswd file
+auth_param basic program /usr/lib/squid/basic_ncsa_auth /etc/squid/.htpasswd
+auth_param basic children 5
+auth_param basic realm Squid Basic Authentication
+auth_param basic credentialsttl 5 hours
+
+# Define ACLs
+acl localhost src 127.0.0.1/32
+acl to_localhost dst 127.0.0.0/8
+acl authenticated proxy_auth REQUIRED
+acl lan src 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
+
+# ===============================
+# Access rules
+# ===============================
+
+# allow localhost (system itself)
+http_access allow localhost
+
+# allow LAN users who authenticate
+http_access allow lan authenticated
+
+# deny all others
+http_access deny all
+
+# ===============================
+# Privacy / header stripping
+# ===============================
+request_header_access Referer deny all
+request_header_access X-Forwarded-For deny all
+request_header_access Via deny all
+request_header_access Cache-Control deny all
+forwarded_for off
+
+# ===============================
+# Misc options
+# ===============================
+visible_hostname detox-proxy
+cache_mgr admin@localdomain
+```
+
+Save it (`Ctrl+O`, Enter, `Ctrl+X`).
+
+---
+
+###  **Create authentication user**
+
+```bash
+sudo htpasswd -c /etc/squid/.htpasswd aadesh
+```
+
+ Enter and confirm a password for user `aadesh`.
+
+---
+
+###  **Test the configuration**
+
+Before starting, always test:
+
+```bash
+sudo squid -k parse
+```
+
+ If you see:
+
+```
+Configuration file squid.conf tested OK
+```
+
+then restart safely:
+
+```bash
+sudo systemctl restart squid
+sudo systemctl status squid
+```
+
+You should now see:
+
+```
+Active: active (running)
+```
+
+---
+
+### 🌐 **Client Setup (Firefox Proxy Settings)**
+
+1. Open **Firefox → Settings → Network Settings → Manual Proxy Configuration**
+2. Enter:
+
+   * HTTP Proxy: `<your_system_IP>`
+   * Port: `3128`
+3. ✅ Check “Also use this proxy for HTTPS”
+4. Click **OK**
+
+When you open a site, Firefox should prompt:
+
+> Username and Password for Squid Proxy
+
+Enter:
+
+```
+Username: anand
+Password: <your password>
+```
+
+---
+
+### 🧾 **Verification**
+
+Run this on your Squid server:
+
+```bash
+sudo tail -f /var/log/squid/access.log
+```
+
+If it shows lines with your client’s IP and site requests — the proxy is fully working.
+
+---
+
+If `sudo squid -k parse` still fails, paste that exact output here — it’ll tell the root cause immediately.
+
+
+---
+
+## ⚙️ STEP 1 — Create the blocked sites file
+
+```bash
+sudo nano /etc/squid/forbidden_domains
+```
+
+Paste this (you can add more later):
+
+```
+.facebook.com
+fb.com
+instagram.com
+```
+
+Save and exit (`Ctrl+O`, Enter, `Ctrl+X`).
+
+---
+
+## ⚙️ STEP 2 — Edit the main Squid config
+
+```bash
+sudo nano /etc/squid/squid.conf
+```
+
+Find the section where you have your ACLs (the lines that start with `acl`) and **add this line near them**:
+
+```
+acl blocked_sites dstdomain "/etc/squid/forbidden_domains"
+```
+
+Then, **above your `http_access allow lan authenticated` line**, add this:
+
+```
+http_access deny blocked_sites
+```
+
+ Example (correct order):
+
+```
+acl authenticated proxy_auth REQUIRED
+acl lan src 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
+acl blocked_sites dstdomain "/etc/squid/forbidden_domains"
+
+# deny access to blocked sites first
+http_access deny blocked_sites
+
+# then allow LAN authenticated users
+http_access allow lan authenticated
+http_access deny all
+```
+
+> **Important rule:**
+> Squid checks rules **top to bottom** and stops when one matches.
+> So the “deny blocked_sites” must come **before** the “allow” rules.
+
+---
+
+## ⚙️ STEP 3 — Restart Squid
+
+```bash
+sudo systemctl restart squid
+sudo systemctl status squid
+```
+
+---
+
+## ⚙️ STEP 4 — Test it
+
+1. Go to Firefox (still using your proxy 3128).
+2. Try opening **[https://www.facebook.com](https://www.facebook.com)** or **[https://fb.com](https://fb.com)**.
+
+You should see an error page like:
+
+```
+Access Denied.
+Your request has been denied by the Squid proxy.
+```
+
+---
+
+## ⚙️ STEP 5 — Confirm in logs
+
+Run:
+
+```bash
+sudo tail -f /var/log/squid/access.log
+```
+
+You should see:
+
+```
+TCP_DENIED/403 ... www.facebook.com ...
+```
+
+That means the ACL blocked it successfully.
+
+---
+
+##  If It Still Doesn’t Block
+
+Try this stronger rule (matches anywhere in domain):
+Replace the ACL line with:
+
+```
+acl blocked_sites dstdomain .facebook.com .fbcdn.net .fb.com
+```
+
+Then restart Squid again:
+
+```bash
+sudo systemctl restart squid
+```
+
+---
+
+ After this, Facebook should be completely blocked** (HTTP and HTTPS both).
+
+
+
